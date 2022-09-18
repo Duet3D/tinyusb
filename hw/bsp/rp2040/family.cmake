@@ -50,9 +50,10 @@ if (NOT TARGET _rp2040_family_inclusion_marker)
 		set(TINYUSB_DEBUG_LEVEL 1)
 	endif ()
 	
+	# DC42: Note that in the following, CFG_TUSB_OS is changed from OPT_OS_PICO to OPT_OS_FREERTOS
 	target_compile_definitions(tinyusb_common_base INTERFACE
 			CFG_TUSB_MCU=OPT_MCU_RP2040
-			CFG_TUSB_OS=OPT_OS_PICO
+			CFG_TUSB_OS=OPT_OS_FREERTOS
 			CFG_TUSB_DEBUG=${TINYUSB_DEBUG_LEVEL}
 	)
 
