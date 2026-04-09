@@ -111,6 +111,16 @@ TU_ATTR_WEAK void tud_cdc_send_break_cb(uint8_t itf, uint16_t duration_ms) {
   (void)duration_ms;
 }
 
+// Called on transfer completion before normal CDC processing.
+// Returns true if the transfer was handled (skip normal CDC FIFO processing)
+TU_ATTR_WEAK bool tud_cdc_xfer_cb(uint8_t itf, uint8_t ep_addr, xfer_result_t result, uint32_t xferred_bytes) {
+  (void)itf;
+  (void)ep_addr;
+  (void)result;
+  (void)xferred_bytes;
+  return false;
+}
+
 //--------------------------------------------------------------------+
 // INTERNAL OBJECT & FUNCTION DECLARATION
 //--------------------------------------------------------------------+
@@ -473,6 +483,12 @@ bool cdcd_xfer_cb(uint8_t rhport, uint8_t ep_addr, xfer_result_t result, uint32_
 
   uint8_t itf = find_cdc_itf(ep_addr);
   TU_ASSERT(itf < CFG_TUD_CDC);
+
+  // Allow application to intercept transfer completions (for zero-copy direct transfers)
+  if (tud_cdc_xfer_cb(itf, ep_addr, result, xferred_bytes)) {
+    return true;
+  }
+
   cdcd_interface_t *p_cdc     = &_cdcd_itf[itf];
   tu_edpt_stream_t *stream_rx = &p_cdc->stream.rx;
   tu_edpt_stream_t *stream_tx = &p_cdc->stream.tx;
