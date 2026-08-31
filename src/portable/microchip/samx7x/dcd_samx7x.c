@@ -664,11 +664,12 @@ bool dcd_edpt_xfer (uint8_t rhport, uint8_t ep_addr, uint8_t * buffer, uint16_t 
     if (dir == TUSB_DIR_OUT)
     {
       USB_REG->DEVEPTIER[epnum] = DEVEPTIER_RXOUTES;
-    } else if (total_bytes == 0 && epnum != 0)
+    } else if (total_bytes == 0 && EP_DMA_SUPPORT(epnum))
     {
-      // A ZLP may be submitted while the previous bank is still being transmitted, e.g. right after a DMA
-      // transfer completes. Clearing FIFOCON on a busy bank is a no-op that would swallow the ZLP, so let
-      // the TXINI handler validate it once the bank is free
+      // Such a ZLP is submitted while the previous bank is still being transmitted, because the DMA transfer
+      // it follows completes on END_BUFF. Clearing FIFOCON on a busy bank is a no-op that would swallow the
+      // ZLP, so let the TXINI handler validate it once the bank is free. Endpoints without DMA complete from
+      // TXINI with the bank already free and can send the ZLP right away
       xfer->zlp_pending = true;
       USB_REG->DEVEPTIER[epnum] = DEVEPTIER_TXINES;
     } else
