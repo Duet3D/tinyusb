@@ -70,6 +70,7 @@ typedef struct {
   uint16_t queued_len;
   uint16_t max_packet_size;
   uint8_t interval;
+  bool zlp_pending;
   tu_fifo_t * fifo;
 } xfer_ctl_t;
 
@@ -330,7 +331,13 @@ static void dcd_ep_handler(uint8_t ep_ix)
     {
       // Acknowledge the interrupt
       USB_REG->DEVEPTICR[ep_ix] = DEVEPTICR_TXINIC;
-      if ((xfer->total_len != xfer->queued_len))
+      if (xfer->zlp_pending)
+      {
+        // TXINI guarantees the current bank is free, so this validates an empty bank and sends the ZLP
+        xfer->zlp_pending = false;
+        USB_REG->DEVEPTIDR[ep_ix] = DEVEPTIDR_FIFOCONC;
+      }
+      else if ((xfer->total_len != xfer->queued_len))
       {
         // TX not complete
         dcd_transmit_packet(xfer, ep_ix);
@@ -618,6 +625,7 @@ bool dcd_edpt_xfer (uint8_t rhport, uint8_t ep_addr, uint8_t * buffer, uint16_t 
   xfer->buffer = buffer;
   xfer->total_len = total_bytes;
   xfer->queued_len = 0;
+  xfer->zlp_pending = false;
   xfer->fifo = NULL;
 
   if (EP_DMA_SUPPORT(epnum) && total_bytes != 0)
@@ -656,6 +664,13 @@ bool dcd_edpt_xfer (uint8_t rhport, uint8_t ep_addr, uint8_t * buffer, uint16_t 
     if (dir == TUSB_DIR_OUT)
     {
       USB_REG->DEVEPTIER[epnum] = DEVEPTIER_RXOUTES;
+    } else if (total_bytes == 0 && epnum != 0)
+    {
+      // A ZLP may be submitted while the previous bank is still being transmitted, e.g. right after a DMA
+      // transfer completes. Clearing FIFOCON on a busy bank is a no-op that would swallow the ZLP, so let
+      // the TXINI handler validate it once the bank is free
+      xfer->zlp_pending = true;
+      USB_REG->DEVEPTIER[epnum] = DEVEPTIER_TXINES;
     } else
     {
       dcd_transmit_packet(xfer,epnum);
@@ -681,6 +696,7 @@ bool dcd_edpt_xfer_fifo (uint8_t rhport, uint8_t ep_addr, tu_fifo_t * ff, uint16
   xfer->buffer = NULL;
   xfer->total_len = total_bytes;
   xfer->queued_len = 0;
+  xfer->zlp_pending = false;
   xfer->fifo = ff;
 
   if (EP_DMA_SUPPORT(epnum) && total_bytes != 0)
