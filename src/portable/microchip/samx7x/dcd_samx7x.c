@@ -664,14 +664,22 @@ bool dcd_edpt_xfer (uint8_t rhport, uint8_t ep_addr, uint8_t * buffer, uint16_t 
     if (dir == TUSB_DIR_OUT)
     {
       USB_REG->DEVEPTIER[epnum] = DEVEPTIER_RXOUTES;
-    } else if (total_bytes == 0 && EP_DMA_SUPPORT(epnum))
+    } else if (total_bytes == 0 && epnum != 0)
     {
-      // Such a ZLP is submitted while the previous bank is still being transmitted, because the DMA transfer
-      // it follows completes on END_BUFF. Clearing FIFOCON on a busy bank is a no-op that would swallow the
-      // ZLP, so let the TXINI handler validate it once the bank is free. Endpoints without DMA complete from
-      // TXINI with the bank already free and can send the ZLP right away
-      xfer->zlp_pending = true;
-      USB_REG->DEVEPTIER[epnum] = DEVEPTIER_TXINES;
+      // TXINI is sticky: every bank freed while it was masked (DMA transfers run with it masked) leaves it
+      // set, so acknowledge it first. Only then does NBUSYBK say whether the empty bank can be validated
+      // right away or whether that has to wait for the next TXINI, because clearing FIFOCON on a busy bank
+      // is a no-op that swallows the ZLP
+      USB_REG->DEVEPTICR[epnum] = DEVEPTICR_TXINIC;
+      if (USB_REG->DEVEPTISR[epnum] & DEVEPTISR_NBUSYBK)
+      {
+        xfer->zlp_pending = true;
+        USB_REG->DEVEPTIER[epnum] = DEVEPTIER_TXINES;
+      }
+      else
+      {
+        dcd_transmit_packet(xfer, epnum);
+      }
     } else
     {
       dcd_transmit_packet(xfer,epnum);
